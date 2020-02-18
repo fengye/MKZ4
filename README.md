@@ -5,6 +5,7 @@ MKZ4
 
 ## Folder structure
 **Cerevo_MKZ4** ：サンプルプログラム。  
+**FineControl_MKZ4** : Program allows finer control over motor speed and servo angle.
 **custom** ：改造用のプログラムや、オリジナルボディのSTLデータ。  
 **manual** ：キット付属のマニュアル。  
 **schematic**:回路図。  
