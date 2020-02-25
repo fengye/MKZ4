@@ -35,6 +35,7 @@
 #include <WiFiClient.h> 
 #include <ESP8266WebServer.h>
 #include <Servo.h>
+#include "webpage.h"
 
 /* set I2C library*/
 #define ADDR1  0x64
@@ -71,99 +72,13 @@ byte vset = MOTOR_MIN;
 byte dir = 0;
 byte servo_dir = servo_neutral;
 byte servo_dir_change = 2;
+unsigned long last_drive_timestamp = 0;
+const unsigned long DRIVE_TIMEOUT = 200;
 
 ESP8266WebServer server(80);
 ESP8266WebServer server_8080(8080);
 Servo servo;
 
-String webpage = "<html>\n"
-"<head>\n"
-"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1\">\n"
-"    <style>\n"
-"        * { padding: 0; margin: 0; }\n"
-"        body { background-color: #0097C1; }\n"
-"    </style>\n"
-"</head>\n"
-"<body>\n"
-"    <div style=\"position:fixed;top: 50pt; text-align:center; width: 100%; color:white; font-size:300%; font-weight:bold; text-transform:uppercase; font-family:sans-serif\" id=\"value\">connected</div>\n"
-"    <div style=\"position:fixed;top: 150pt; text-align:center; width: 100%; color:white; font-size:300%; font-weight:bold; text-transform:uppercase; font-family:sans-serif\" id=\"args\"></div>\n"
-"    <form action=\"\" target=\"tif\" id=\"form\">\n"
-"        <iframe src=\"javascript: false;\" name=\"tif\" style=\"display: none;\" id=\"tif\">\n"
-"        </iframe>\n"
-"        <input id=\"arg_x\" name=\"arg_x\" type=\"hidden\"/>\n"
-"        <input id=\"arg_y\" name=\"arg_y\" type=\"hidden\"/>\n"
-"    </form>\n"
-"    <script>\n"
-"        var offset = 50;\n"
-"        document.body.style.height = document.body.clientHeight + offset + 'px';\n"
-"        document.body.style.width = document.body.clientWidth + offset + 'px';\n"
-"        document.getElementsByTagName(\"html\")[0].style.height = document.body.style.height + 'px';\n"
-"        document.getElementsByTagName(\"html\")[0].style.width = document.body.style.width + 'px';\n"
-"        var moveHomePosition = function() {\n"
-"            document.body.scrollTop = offset / 2;\n"
-"            document.body.scrollLeft = offset / 2;\n"
-"        };\n"
-"        setTimeout(moveHomePosition, 100);\n"
-"        var startX = 0;var startY = 0;var command ='/stop';\n"
-"        var deadzone = 20;\n"
-"        var xlimit = document.body.clientWidth / 6;\n"
-"        var ylimit = document.body.clientHeight / 4;\n"
-"        var xcenter = document.body.clientWidth / 2;\n"
-"        var ycenter = document.body.clientHeight / 2;\n"
-"        var esp_port = 'http://192.168.4.1:8080';\n"
-"        var el_form = document.getElementById('form');\n"
-"        var driveFunction = function(event) {\n"
-"            var x = event.touches[0].clientX - xcenter;\n"
-"            var y = event.touches[0].clientY - ycenter;\n"
-"            if (Math.abs(x) >= deadzone || Math.abs(y) >= deadzone)\n"
-"            {\n"
-"                var arg_x = 0;\n"
-"                var arg_y = 0;\n"
-"                var url = \"/drive\";\n"
-"                if (x >= deadzone)\n"
-"                    arg_x = Math.floor((x - deadzone) * 100 / xlimit);\n"
-"                else if (x <= -deadzone)\n"
-"                    arg_x = Math.floor((x + deadzone) * 100 / xlimit);\n"
-"                else\n"
-"                    arg_x = 0;\n"
-"\n"
-"                if (y >= deadzone)\n"
-"                    arg_y = Math.floor((y - deadzone) * 100 / ylimit);\n"
-"                else if (y <= -deadzone)\n"
-"                    arg_y = Math.floor((y + deadzone) * 100 / ylimit);\n"
-"                else\n"
-"                    arg_y = 0;\n"
-"\n"
-"                if (arg_x < -100)\n"
-"                    arg_x = -100;\n"
-"                if (arg_x > 100)\n"
-"                    arg_x = 100;\n"
-"                if (arg_y < -100)\n"
-"                    arg_y = -100;\n"
-"                if (arg_y > 100)\n"
-"                    arg_y = 100;\n"
-"\n"
-"                document.getElementById('arg_x').value = arg_x;\n"
-"                document.getElementById('arg_y').value = arg_y;\n"
-"\n"
-"                el_form.action = esp_port + url;\n"
-"                el_form.submit();\n"
-"                document.getElementById('value').innerHTML = url.replace(\"/\",\"\")\n"
-"                document.getElementById('args').innerHTML = \"X: \" + arg_x + \" Y: \" + arg_y;\n"
-"            }\n"
-"        };\n"
-"        document.body.ontouchstart = driveFunction;\n"
-"        document.body.ontouchmove = driveFunction;\n"
-"        document.body.ontouchend = function(event) {\n"
-"            el_form.action = esp_port + '/stop';\n"
-"            el_form.submit();\n"
-"            setTimeout(moveHomePosition, 50);\n"
-"            document.getElementById('value').innerHTML = 'stop';\n"
-"            document.getElementById('args').innerHTML = '';\n"
-"        };\n"
-"    </script>\n"
-"</body>\n"
-"</html>\n";
 
 void motor_func(char addr , char duty){
   Wire.beginTransmission(addr);
@@ -253,6 +168,7 @@ void handle_drive() {
         motor_func(ADDR1, reg0);
 
         state = arg_y < 0 ? CMD_FORWARD : CMD_REVERSE;
+        last_drive_timestamp = millis();
 
         Serial.print("drive x:");
         Serial.print(arg_x);
@@ -260,9 +176,6 @@ void handle_drive() {
         Serial.print(arg_y);
         Serial.println();
       }
-
-      
-      
     LED_H;
     server_8080.send(200, "text/html", "");
   }
@@ -321,4 +234,15 @@ void setup() {
 void loop() {
   server.handleClient();
   server_8080.handleClient();
+
+  // stop driving if no subsequent drive command in a certain amount of time, in case of signal loss
+  // or client's browser throttles the form submitting.
+  if (millis() - last_drive_timestamp > DRIVE_TIMEOUT &&
+      (state == CMD_FORWARD || state == CMD_REVERSE))
+  {
+    LED_L;
+      stop_motor();
+      state = CMD_STOP;
+    LED_H;
+  }
 }
