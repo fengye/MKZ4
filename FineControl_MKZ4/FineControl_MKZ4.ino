@@ -234,17 +234,15 @@ void handle_drive() {
       int angle = map(arg_x, -100, 100, servo_left, servo_right);
       servo.write(angle);
 
-      if ((state == CMD_FORWARD && arg_y > 0) ||
-          (state == CMD_REVERSE && arg_y < 0))
+      if ((state == CMD_FORWARD && arg_y > 0))
       {
         // first has to stop
         brake_motor();
-        state = (state == CMD_FORWARD) ? CMD_BRAKE_FROM_FORWARD_TO_REVERSE : CMD_BRAKE_FROM_REVERSE_TO_FORWARD;
+        state = CMD_BRAKE_FROM_FORWARD_TO_REVERSE;
 
         Serial.println("drive but get inverse brake!");
       }
-      else if (state == CMD_BRAKE_FROM_FORWARD_TO_REVERSE ||
-              state == CMD_BRAKE_FROM_REVERSE_TO_FORWARD)
+      else if (state == CMD_BRAKE_FROM_FORWARD_TO_REVERSE)
       {
         Serial.println("Ignore drive request. To drive, first to stop");
       }
