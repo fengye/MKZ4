@@ -73,7 +73,9 @@ volatile byte status_led = 0;
 unsigned long last_drive_timestamp = 0;
 unsigned long last_led_status_timestamp = 0;
 const unsigned long DRIVE_TIMEOUT = 200;
-const unsigned long LED_TIMEOUT = 100;
+const unsigned long LED_TIMEOUT_MAX = 100;
+const unsigned long LED_TIMEOUT_MIN = 20;
+volatile unsigned long led_timeout = LED_TIMEOUT_MAX;
 
 ESP8266WebServer server(80);
 ESP8266WebServer server_8080(8080);
@@ -168,6 +170,7 @@ void handle_drive() {
 
         state = arg_y < 0 ? CMD_FORWARD : CMD_REVERSE;
         last_drive_timestamp = millis();
+        led_timeout = map(abs(arg_y), 0, 100, LED_TIMEOUT_MAX, LED_TIMEOUT_MIN);
 
         Serial.print("drive x:");
         Serial.print(arg_x);
@@ -246,7 +249,7 @@ void loop() {
       LED_H;
     }
     // blink the drive LED
-    else if (current - last_led_status_timestamp > LED_TIMEOUT)
+    else if (current - last_led_status_timestamp > led_timeout)
     {
       last_led_status_timestamp = current;
       status_led = (status_led + 1) % 2;
