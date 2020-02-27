@@ -67,13 +67,13 @@
 const char *ssid = "MKZ4";
 const char *password = "";
 
-byte state = CMD_STOP;
-byte vset = MOTOR_MIN;
-byte dir = 0;
-byte servo_dir = servo_neutral;
-byte servo_dir_change = 2;
+volatile byte state = CMD_STOP;
+volatile byte vset = MOTOR_MIN;
+volatile byte status_led = 0;
 unsigned long last_drive_timestamp = 0;
+unsigned long last_led_status_timestamp = 0;
 const unsigned long DRIVE_TIMEOUT = 200;
+const unsigned long LED_TIMEOUT = 100;
 
 ESP8266WebServer server(80);
 ESP8266WebServer server_8080(8080);
@@ -138,7 +138,6 @@ void handle_stop() {
 void handle_drive() {
   if (server_8080.hasArg("arg_x") && server_8080.hasArg("arg_y"))
   {
-    LED_L;
       String str_arg_x = server_8080.arg("arg_x");
       String str_arg_y = server_8080.arg("arg_y");
 
@@ -176,7 +175,6 @@ void handle_drive() {
         Serial.print(arg_y);
         Serial.println();
       }
-    LED_H;
     server_8080.send(200, "text/html", "");
   }
   else
@@ -235,14 +233,32 @@ void loop() {
   server.handleClient();
   server_8080.handleClient();
 
-  // stop driving if no subsequent drive command in a certain amount of time, in case of signal loss
-  // or client's browser throttles the form submitting.
-  if (millis() - last_drive_timestamp > DRIVE_TIMEOUT &&
-      (state == CMD_FORWARD || state == CMD_REVERSE))
+  if (state == CMD_FORWARD || state == CMD_REVERSE)
   {
-    LED_L;
-      stop_motor();
-      state = CMD_STOP;
-    LED_H;
+    // stop driving if no subsequent drive command in a certain amount of time, in case of signal loss
+    // or client's browser throttles the form submitting.
+    unsigned long current = millis();
+    if (current - last_drive_timestamp > DRIVE_TIMEOUT)
+    {
+      LED_L;
+        stop_motor();
+        state = CMD_STOP;
+      LED_H;
+    }
+    // blink the drive LED
+    else if (current - last_led_status_timestamp > LED_TIMEOUT)
+    {
+      last_led_status_timestamp = current;
+      status_led = (status_led + 1) % 2;
+
+      if (status_led == 0)
+      {
+        LED_L;
+      }
+      else
+      {
+        LED_H;
+      }
+    }
   }
 }
